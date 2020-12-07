@@ -8,7 +8,6 @@ library(pheatmap)
 library(uwot) 
 library(FNN)
 library(prodlim)
-library(flowCore)
 library(dplyr)    
 library(ggplot2)  
 library(reshape2)
@@ -19,13 +18,13 @@ library(samr)
 
 ############## Load Function 1 of 2
 regionalEnrichmentAnalysis <- function ( singleCellData, 
-                                         saveDirectory, #saveWD
-                                         saveName, # saveID
-                                         markers, # markersOfInterest
+                                         saveDirectory, 
+                                         saveName, 
+                                         markers,
+                                         conditions,
                                          cell_subset_number = NA,
                                          by_min_sampleN = FALSE,
                                          groupSize = 15,
-                                         conditions = c("Untreat","PDL1","CD40","PDL1.CD40"), #first must be untreated or base comparison
                                          return_result = TRUE,
 
                                          EuclideanDistance = TRUE,
@@ -44,33 +43,21 @@ regionalEnrichmentAnalysis <- function ( singleCellData,
   
   
   
-  #~~# Verify color inputs
-  
-  graphs <- c(printUMAP_cluster,printUMAP_condition,printUMAP_markers,print_NeighborhoodHeatMap,print_NeighborhoodUMAP)
-  if(any(graphs == TRUE)){
-    tol21rainbow= c("#771155", "#AA4488", "#CC99BB", "#114477", "#4477AA", "#77AADD", "#117777", "#44AAAA", 
-                    "#77CCCC", "#117744", "#44AA77", "#88CCAA", "#777711", "#AAAA44", "#DDDD77", "#774411", 
-                    "#AA7744", "#DDAA77", "#771122", "#AA4455", "#DD7788")
-    
-    color = grDevices::colors()[grep('gr(a|e)y', grDevices::colors(), invert = T)]
-    color = color[-which(grepl("white", color))]
-    
-      if(!(length(tol21rainbow) >= length(conditions))){
-        condition_colors = sample(color, length(conditions))
-      } else{condition_colors = tol21rainbow[1:length(conditions)]}
-      condition_colors[1] = "gray27"
-    }
-    
-  
-  
-  #~~# Clean the dataset
+ #~~# Clean the dataset
   nonMarkerColumns = c("cluster","sampleID", "condition")
           #These elements are non-negotiable. sampleID MUST be the individual identifier
           #NO underscores allowed in the condition element, or ideally any of these
+          singleCellData$cluster <- gsub("_",".", singleCellData$cluster)
+          singleCellData$sampleID <- gsub("_",".", singleCellData$sampleID)
+          singleCellData$condition <- gsub("_",".", singleCellData$condition)
           singleCellData$sampleID <- paste(singleCellData$condition, singleCellData$sampleID,sep="_")
+          
+  if(is.null(markers)){
+      markers <- colnames(REA_Results)[1:(which(colnames(REA_Results) == "cluster")-1)]
+  }
   
   clean_SCData <- singleCellData[,c(which(colnames(singleCellData) %in% markers),which(colnames(singleCellData) %in% nonMarkerColumns))]
-
+      
   subset_SCData <- data.frame()
   if(!(is.na(cell_subset_number))){
     for(j in unique(clean_SCData$condition)){
@@ -88,10 +75,36 @@ regionalEnrichmentAnalysis <- function ( singleCellData,
   } else{
     subset_SCData <- clean_SCData
   }
+  if(is.null(conditions)){conditions <- unique(subset_SCData$conditions)
+          conditions <- conditions[order(conditions, decreasing = TRUE)]
+          if(any(grepl("Untreat",conditions,ignore.case=TRUE))){
+            conditions <- conditions[c(which(grepl("Untreat",conditions,ignore.case=TRUE)),
+                                       which(!(grepl("Untreat",conditions,ignore.case=TRUE))))]
+          } else if(any(grepl("Control",conditions,ignore.case=TRUE))){
+            conditions <- conditions[c(which(grepl("Control",conditions,ignore.case=TRUE)),
+                                       which(!(grepl("Control",conditions,ignore.case=TRUE))))]
+          }
+  } 
+  
+  
+  
+  #~~# Verify color inputs
+  
+  tol21rainbow= c("#771155", "#AA4488", "#CC99BB", "#114477", "#4477AA", "#77AADD", "#117777", "#44AAAA", 
+                  "#77CCCC", "#117744", "#44AA77", "#88CCAA", "#777711", "#AAAA44", "#DDDD77", "#774411", 
+                  "#AA7744", "#DDAA77", "#771122", "#AA4455", "#DD7788")
+  
+  color = grDevices::colors()[grep('gr(a|e)y', grDevices::colors(), invert = T)]
+  color = color[-which(grepl("white", color))]
+  
+  if(!(length(tol21rainbow) >= length(conditions))){
+    condition_colors = sample(color, length(conditions))
+  } else{condition_colors = tol21rainbow[1:length(conditions)]}
+  condition_colors[1] = "gray27"
   
  
    
-  #~~# Compute Euclidean Distance between conditions
+#~~# Compute Euclidean Distance between conditions
   
   if(EuclideanDistance) {
     print("Starting euclidean distance analysis")
@@ -388,27 +401,6 @@ regionalEnrichmentAnalysis <- function ( singleCellData,
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ############## Load Function 2 of 2
 REA_differentiating_Markers <- function (REA_Results,
                                          saveDirectory, 
@@ -418,7 +410,8 @@ REA_differentiating_Markers <- function (REA_Results,
                                          cluster.of.interest = NULL,
                                          markers = NULL,
                                          groups.to.test = NULL, #enrichment groups you are interested in comparing
-                                         compare.to = NULL #Default comparison to unenriched. Can change to a particular group here if so desired.
+                                         compare.to = NULL, #Default comparison to unenriched. Can change to a particular group here if so desired.
+                                         representation.cutoff = 100
                                          ){
   
   
@@ -426,8 +419,8 @@ REA_differentiating_Markers <- function (REA_Results,
   #~~# Initializing needed function
   # SAMR stat analysis 
     compare.markers.between.neighborhoods <- function(dat,group1,group2, proteins,
-                                                      arcsinh_transformed, arcsinh_trans.value){
-      
+                                                      arcsinh_transformed){
+      arcsinh_trans.value = 5
       dat1 = dat[which(dat$EnrichmentCategory == group1),]
       dat2 = dat[which(dat$EnrichmentCategory  == group2),]
       
@@ -437,9 +430,9 @@ REA_differentiating_Markers <- function (REA_Results,
       if(length(remove_dat2) > 0) {dat2 = dat2[,-remove_dat2]}
       
       # Order & Untransform data  
-      get1 = c(which(colnames(dat1) == "sampleID"), which(colnames(dat1) == "EnrichmentCategory"))
+        get1 = c(which(colnames(dat1) == "sampleID"), which(colnames(dat1) == "EnrichmentCategory"))
       dat1 = dat1[,c(get1, c(1:ncol(dat1))[-which(1:ncol(dat1) %in% get1)])]
-      get2 = c(which(colnames(dat2) == "sampleID"), which(colnames(dat2) == "EnrichmentCategory"))
+        get2 = c(which(colnames(dat2) == "sampleID"), which(colnames(dat2) == "EnrichmentCategory"))
       dat2 = dat2[,c(get2, c(1:ncol(dat2))[-which(1:ncol(dat2) %in% get2)])]
       
       if(arcsinh_transformed){
@@ -559,7 +552,6 @@ REA_differentiating_Markers <- function (REA_Results,
 
   REA_Results.clean <- REA_Results.clean[,which(colnames(REA_Results.clean) %in% markers | colnames(REA_Results.clean) == "EnrichmentCategory" |
                                               colnames(REA_Results.clean) == "sampleID")]
-
   
   if(is.null(compare.to)){
     if(!("Unenriched" %in% REA_Results.clean$EnrichmentCategory)){
@@ -579,21 +571,34 @@ REA_differentiating_Markers <- function (REA_Results,
     }
   } else{
     groups.to.test <- unique(as.character(unlist(REA_Results.clean$EnrichmentCategory)))[-which(unique(as.character(unlist(REA_Results.clean$EnrichmentCategory))) == compare.to)]
+    groups.to.test <- groups.to.test[order(groups.to.test, decreasing = TRUE)]
   }
- 
+
   if(all(groups.to.test %in% REA_Results.clean$EnrichmentCategory)){
     REA_Results.clean <- REA_Results.clean[which(REA_Results.clean$EnrichmentCategory %in% append(groups.to.test, compare.to)), ]
   } else{
     stop("Error. Main comparison and groups are not properly defined")
   } 
   
-  
+  if(any(as.numeric(table(REA_Results.clean$EnrichmentCategory)) < representation.cutoff)){
+    remove_group.s <- names(table(REA_Results.clean$EnrichmentCategory))[which(as.numeric(table(REA_Results.clean$EnrichmentCategory)) < representation.cutoff)]
+    if(length(remove_group.s) > 1){
+      for(d in remove_group.s){
+        if(d == remove_group.s[1]){print("The following groups do not have sufficient cells for statistcial analysis. Removing these groups:")}
+        print(d)}
+    } else{
+      cat(paste("There are not sufficient cells in the following group for statistcial analysis. Removing this group:", "\n",remove_group.s))
+      print(remove_group.s)
+    }
+    
+    REA_Results.clean <- REA_Results.clean[-which(REA_Results.clean$EnrichmentCategory %n% remove_group.s),]
+  }
   
   #~~# Calculate significantly changed markers via SAMR  https://www.rdocumentation.org/packages/samr/versions/3.0/topics/samr
   
   all_stat.Results <- data.frame()
   for(group2 in groups.to.test){
-    res <- compare.markers.between.neighborhoods(REA_Results.clean,compare.to, group2,markers,arcsinh_transformed, arcsinh_trans.value)
+    res <- compare.markers.between.neighborhoods(dat = REA_Results.clean, group1 = compare.to, group2, proteins = markers, arcsinh_transformed)
     res$comparison <- paste0(compare.to,".vs.",group2); res <- res[,c(ncol(res), c(1:(ncol(res)-1)))]
     all_stat.Results <- rbind(all_stat.Results,res)
   }
@@ -700,6 +705,7 @@ asinh_trans = function(){
   trans_new(name = 'asinh', transform = function(x) asinh(x/5), 
             inverse = function(x) (sinh(x) * 5))
 }
+
 
 
 
