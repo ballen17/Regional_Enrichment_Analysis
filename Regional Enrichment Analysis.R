@@ -42,7 +42,6 @@ regionalEnrichmentAnalysis <- function ( singleCellData,
   dir.create(paste0(saveDirectory,Sys.Date(),"_",saveName,"_Output"))
   
   
-  
  #~~# Clean the dataset
   nonMarkerColumns = c("cluster","sampleID", "condition")
           #These elements are non-negotiable. sampleID MUST be the individual identifier
@@ -50,11 +49,12 @@ regionalEnrichmentAnalysis <- function ( singleCellData,
           singleCellData$cluster <- gsub("_",".", singleCellData$cluster)
           singleCellData$sampleID <- gsub("_",".", singleCellData$sampleID)
           singleCellData$condition <- gsub("_",".", singleCellData$condition)
+                conditions <- gsub("_",".", conditions)
           singleCellData$sampleID <- paste(singleCellData$condition, singleCellData$sampleID,sep="_")
           
   if(is.null(markers)){
-      markers <- colnames(REA_Results)[1:(which(colnames(REA_Results) == "cluster")-1)]
-  }
+      markers <- colnames(singleCellData)[1:(which(colnames(singleCellData) == "cluster")-1)]
+  }#ERROR: depends on cluster being present
   
   clean_SCData <- singleCellData[,c(which(colnames(singleCellData) %in% markers),which(colnames(singleCellData) %in% nonMarkerColumns))]
       
@@ -75,16 +75,17 @@ regionalEnrichmentAnalysis <- function ( singleCellData,
   } else{
     subset_SCData <- clean_SCData
   }
-  if(is.null(conditions)){conditions <- unique(subset_SCData$conditions)
-          conditions <- conditions[order(conditions, decreasing = TRUE)]
-          if(any(grepl("Untreat",conditions,ignore.case=TRUE))){
-            conditions <- conditions[c(which(grepl("Untreat",conditions,ignore.case=TRUE)),
-                                       which(!(grepl("Untreat",conditions,ignore.case=TRUE))))]
-          } else if(any(grepl("Control",conditions,ignore.case=TRUE))){
-            conditions <- conditions[c(which(grepl("Control",conditions,ignore.case=TRUE)),
-                                       which(!(grepl("Control",conditions,ignore.case=TRUE))))]
-          }
-  } 
+  
+if(is.null(conditions)){conditions <- unique(subset_SCData$conditions)
+    conditions <- conditions[order(conditions, decreasing = TRUE)]
+      if(any(grepl("Untreat",conditions,ignore.case=TRUE))){
+        conditions <- conditions[c(which(grepl("Untreat",conditions,ignore.case=TRUE)),
+                                   which(!(grepl("Untreat",conditions,ignore.case=TRUE))))]
+      } else if(any(grepl("Control",conditions,ignore.case=TRUE))){
+        conditions <- conditions[c(which(grepl("Control",conditions,ignore.case=TRUE)),
+                                   which(!(grepl("Control",conditions,ignore.case=TRUE))))]
+      }
+} 
   
   
   
@@ -179,7 +180,7 @@ regionalEnrichmentAnalysis <- function ( singleCellData,
         if(printUMAP_cluster){
           if(!(length(tol21rainbow) >= length(unique(subset_SCData$cluster)))){
             cluster_colors = sample(color, unique(subset_SCData$cluster))
-          } else{cluster_colors = tol21rainbow}
+          } else{cluster_colors = tol21rainbow} # ERROR CHECK 3/24/21 some error here if clusters greater
           
           UMAP_cluster <- ggplot(subset_SCData, aes(UMAP1, UMAP2, color = cluster)) + 
             geom_point(stroke = 0.3, size = 0.3) + 
@@ -580,6 +581,8 @@ REA_differentiating_Markers <- function (REA_Results,
     stop("Error. Main comparison and groups are not properly defined")
   } 
   
+  REA_Results.clean$EnrichmentCategory <- as.character(REA_Results.clean$EnrichmentCategory)
+  
   if(any(as.numeric(table(REA_Results.clean$EnrichmentCategory)) < representation.cutoff)){
     remove_group.s <- names(table(REA_Results.clean$EnrichmentCategory))[which(as.numeric(table(REA_Results.clean$EnrichmentCategory)) < representation.cutoff)]
     if(length(remove_group.s) > 1){
@@ -591,7 +594,7 @@ REA_differentiating_Markers <- function (REA_Results,
       print(remove_group.s)
     }
     
-    REA_Results.clean <- REA_Results.clean[-which(REA_Results.clean$EnrichmentCategory %n% remove_group.s),]
+    REA_Results.clean <- REA_Results.clean[-which(REA_Results.clean$EnrichmentCategory %in% remove_group.s),]
   }
   
   #~~# Calculate significantly changed markers via SAMR  https://www.rdocumentation.org/packages/samr/versions/3.0/topics/samr

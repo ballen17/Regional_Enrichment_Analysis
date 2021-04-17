@@ -51,7 +51,7 @@ regionalEnrichmentAnalysis(singleCellData,
                            print_NeighborhoodUMAP = TRUE)  
 ```
 **Sample Information**  
- - **singleCellData**: This is tha main data matrix. It must contain individual cells by rows and proteins by column. The protein columns must be followed by three identifier colums (cluster: pre-determined cluster number, sampleID: unique sample idenfiter, condition: treatment or conidtion status).
+ - **singleCellData**: This is tha main data matrix. It must contain individual cells by rows and proteins by column. The protein columns must be followed by three identifier colums (cluster: pre-determined cluster number, sampleID: unique sample idenfiter, condition: treatment or condition status).
 
 Protein 1-N... | cluster | sampleID | condition
 ------------- | ------------- | ------------- | -------------
